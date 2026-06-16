@@ -122,28 +122,28 @@ ezb_zcl_status_t window_covering_process(const ezb_zcl_cmd_hdr_t *header, const 
 		[EZB_ZCL_CMD_WINDOW_COVERING_GO_TO_TILT_PERCENTAGE_ID] = "EZB_ZCL_CMD_WINDOW_COVERING_GO_TO_TILT_PERCENTAGE_ID",
 	};
 
-	ESP_LOGW(TAG, "dst_ep:%02x cluster_id:%04x cmd_id:%02x payload_length:%04d payload_ptr:%08x", header->dst_ep, header->cluster_id, header->cmd_id, payload_length, (u32)payload);
+	
 	const ezb_zcl_window_covering_server_cmd_id_t com = (ezb_zcl_window_covering_server_cmd_id_t)header->cmd_id;
 
 	const char * com_name = "unknown";
 	if(com <= EZB_ZCL_CMD_WINDOW_COVERING_GO_TO_TILT_PERCENTAGE_ID){
 		com_name = cmd_names[com];
 	}
+	ESP_LOGI(TAG, "'%s'(%x)", com_name, com);
+	ESP_LOGW("\t", "dst_ep:%02x cluster_id:%04x cmd_id:%02x payload_length:%04d payload_ptr:%08x", header->dst_ep, header->cluster_id, header->cmd_id, payload_length, (u32)payload);
 
 	ezb_zcl_status_t result = EZB_ZCL_STATUS_UNSUP_CMD;
 	switch (com) {
 		case EZB_ZCL_CMD_WINDOW_COVERING_STOP_ID: {
-			ESP_LOGI(TAG, "'%s'(%x)", com_name, com);
 #warning "TODO: stop motor here"
 			result = EZB_ZCL_STATUS_SUCCESS;
 		} break;
 		case EZB_ZCL_CMD_WINDOW_COVERING_GO_TO_LIFT_PERCENTAGE_ID: {
-			ESP_LOGI(TAG, "'%s'(%x)", com_name, com);
 #warning "TODO: start move motor to desired position here"
 			result = EZB_ZCL_STATUS_SUCCESS;
 		} break;
 		default:{
-			ESP_LOGE(TAG, "'%s'(%x)", com_name, com);
+			/* nothing */
 		} break;
 	}
 	return result;
