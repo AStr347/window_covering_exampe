@@ -111,24 +111,9 @@ ezb_zcl_status_t window_covering_process(const ezb_zcl_cmd_hdr_t *header, const 
 	}
 #endif
 
-	static const
-	char * const cmd_names[] = {
-		[EZB_ZCL_CMD_WINDOW_COVERING_UP_OPEN_ID] = "EZB_ZCL_CMD_WINDOW_COVERING_UP_OPEN_ID",
-		[EZB_ZCL_CMD_WINDOW_COVERING_DOWN_CLOSE_ID] = "EZB_ZCL_CMD_WINDOW_COVERING_DOWN_CLOSE_ID",
-		[EZB_ZCL_CMD_WINDOW_COVERING_STOP_ID] = "EZB_ZCL_CMD_WINDOW_COVERING_STOP_ID",
-		[EZB_ZCL_CMD_WINDOW_COVERING_GO_TO_LIFT_VALUE_ID] = "EZB_ZCL_CMD_WINDOW_COVERING_GO_TO_LIFT_VALUE_ID",
-		[EZB_ZCL_CMD_WINDOW_COVERING_GO_TO_LIFT_PERCENTAGE_ID] = "EZB_ZCL_CMD_WINDOW_COVERING_GO_TO_LIFT_PERCENTAGE_ID",
-		[EZB_ZCL_CMD_WINDOW_COVERING_GO_TO_TILT_VALUE_ID] = "EZB_ZCL_CMD_WINDOW_COVERING_GO_TO_TILT_VALUE_ID",
-		[EZB_ZCL_CMD_WINDOW_COVERING_GO_TO_TILT_PERCENTAGE_ID] = "EZB_ZCL_CMD_WINDOW_COVERING_GO_TO_TILT_PERCENTAGE_ID",
-	};
-
-	
 	const ezb_zcl_window_covering_server_cmd_id_t com = (ezb_zcl_window_covering_server_cmd_id_t)header->cmd_id;
 
-	const char * com_name = "unknown";
-	if(com <= EZB_ZCL_CMD_WINDOW_COVERING_GO_TO_TILT_PERCENTAGE_ID){
-		com_name = cmd_names[com];
-	}
+	const char * com_name = window_covering_cmd_names(com);
 	ESP_LOGI(TAG, "'%s'(%x)", com_name, com);
 	ESP_LOGW("\t", "dst_ep:%02x cluster_id:%04x cmd_id:%02x payload_length:%04d payload_ptr:%08x", header->dst_ep, header->cluster_id, header->cmd_id, payload_length, (u32)payload);
 
@@ -339,6 +324,49 @@ void bdb_commissioning_saved(const ezb_bdb_comm_mode_t bdb_comm){
 static
 void zb_action_handler(const ezb_zcl_core_action_callback_id_t callback_id, void *message) {
 	ESP_LOGW(TAG, "'%s'(0x%x)", ezb_zcl_core_action_callback_id_to_string(callback_id), callback_id);
+	switch (callback_id){
+		case EZB_ZCL_CORE_WINDOW_COVERING_MOVEMENT_CB_ID: {
+			const ezb_zcl_window_covering_movement_message_t * const wcmm = (ezb_zcl_window_covering_movement_message_t *)message;
+			//dst_ep:0c cluster_id:0102 cmd_id:02 payload_length:0001
+			const ezb_zcl_cmd_hdr_t *header = wcmm->in.header;
+			const ezb_zcl_window_covering_server_cmd_id_t com = (ezb_zcl_window_covering_server_cmd_id_t)header->cmd_id;
+			const char * com_name = window_covering_cmd_names(com);
+			ESP_LOGI(TAG, "'%s'(%x)", com_name, com);
+			ESP_LOGW("\t", "dst_ep:%02x cluster_id:%04x cmd_id:%02x", header->dst_ep, header->cluster_id, header->cmd_id);
+			// lift_percentage, lift_value, tilt_percentage, tilt_value inside union
+			const u16 value = wcmm->in.payload.lift_value;
+			ESP_LOGW("\t", "payload: %04x", value);
+		} break;
+		default: {
+			/* nothing */
+		} break;
+	}
+}
+
+bool zb_raw_action_handler(const ezb_zcl_raw_frame_t *raw_frame){
+	b8 result = false;
+
+	if(HA_ESP_USE_CLUSTER_ID == raw_frame->header->cluster_id){
+		const char * com_name = window_covering_cmd_names(raw_frame->header->cmd_id);
+		ESP_LOGI(TAG, "'%s'(%x)", com_name, raw_frame->header->cmd_id);
+		ESP_LOGW("\t", "dst_ep:%02x cluster_id:%04x cmd_id:%02x", raw_frame->header->dst_ep, raw_frame->header->cluster_id, raw_frame->header->cmd_id);
+		switch (raw_frame->header->cmd_id) {
+			case EZB_ZCL_CMD_WINDOW_COVERING_STOP_ID: {
+#warning "TODO: stop motor here"
+				ESP_LOGW("\t", "payload_length: %04x payload_addr: %08x", raw_frame->payload_length, (u32)raw_frame->payload);
+				result = true;
+			} break;
+			case EZB_ZCL_CMD_WINDOW_COVERING_GO_TO_LIFT_PERCENTAGE_ID: {
+#warning "TODO: start move motor to desired position here"
+				ESP_LOGW("\t", "payload_length: %04x payload_addr: %08x payload: %d", raw_frame->payload_length, (u32)raw_frame->payload, raw_frame->payload[0]);
+				result = true;
+			} break;
+			default:{
+				/* nothing */
+			} break;
+		}
+	}
+	return result;
 }
 
 static
@@ -568,7 +596,10 @@ void esp_zb_task(void * arg){
 			.cmd_disc_cb = (ezb_zcl_custom_cluster_disc_cmd_t)window_covering_disc,
 			.process_cmd_cb = (ezb_zcl_custom_cluster_process_cmd_t)window_covering_process,
 		};
-		ezb_zcl_custom_cluster_handlers_register(&handlers);
+		const ezb_err_t register_res = ezb_zcl_custom_cluster_handlers_register(&handlers);
+		if(EZB_ERR_NONE != register_res){
+			ESP_LOGE(\t, "ezb_zcl_custom_cluster_handlers_register failed %x", register_res);
+		}
 #endif
 		ezb_zcl_window_covering_cluster_server_init(HA_ESP_USE_ENDPOINT);
 	}
@@ -578,6 +609,7 @@ void esp_zb_task(void * arg){
 	ESP_ERROR_CHECK(ezb_af_device_add_endpoint_desc(dev_desc, ep_desc));
     ESP_ERROR_CHECK(ezb_af_device_desc_register(dev_desc));
     ezb_zcl_core_action_handler_register((ezb_zcl_core_action_callback_t) zb_action_handler);
+	ezb_zcl_raw_command_handler_register((ezb_zcl_raw_frame_callback_t ) zb_raw_action_handler);
 
 	ESP_ERROR_CHECK(esp_zigbee_start(false));
 
